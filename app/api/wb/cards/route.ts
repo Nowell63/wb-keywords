@@ -2,19 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 type WBCard = { nmID: number; vendorCode?: string; title?: string };
 
-type WBSort = {
-  cursor: { limit: number; next: string | null };
-  sort: { sortBy: "updateAt"; ascending: boolean };
-};
-
-type WBFilter = {
-  textSearch: string;
-  withPhoto: -1 | 0 | 1;
-};
-
 type WBListBody = {
-  sort: WBSort;
-  filter: WBFilter;
+  sort: {
+    cursor: { limit: number; next: string | null };
+    sort: { sortBy: "updateAt"; ascending: boolean };
+  };
+  filter: {
+    textSearch: string;
+    withPhoto: -1 | 0 | 1;
+  };
 };
 
 export async function POST(req: NextRequest) {
@@ -26,7 +22,6 @@ export async function POST(req: NextRequest) {
     let next: string | null = null;
     const limit = 100;
 
-    // крутим страницы, пока WB отдаёт cursor.next
     for (let page = 0; page < 100; page++) {
       const body: WBListBody = {
         sort: {
@@ -55,4 +50,25 @@ export async function POST(req: NextRequest) {
       if (!resp.ok) {
         const t = await resp.text();
         return NextResponse.json(
-          { error: "WB error", det
+          { error: "WB error", details: t },
+          { status: resp.status }
+        );
+      }
+
+      const data: any = await resp.json();
+      const cards: any[] = data?.cards || [];
+
+      for (const c of cards) {
+        all.push({ nmID: c.nmID, vendorCode: c.vendorCode, title: c.title });
+      }
+
+      next = data?.cursor?.next ?? null;
+      if (!next || cards.length === 0) break;
+    }
+
+    const unique = Array.from(new Map(all.map(c => [c.nmID, c])).values());
+    return NextResponse.json({ cards: unique });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "failed" }, { status: 500 });
+  }
+}
